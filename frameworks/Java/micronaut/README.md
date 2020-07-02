@@ -1,4 +1,4 @@
-# [Micronaut](http://micronaut.io) Benchmarking Test (1.2.7)
+# [Micronaut](http://micronaut.io) Benchmarking Test (2.0.0)
 
 ### Test Type Implementation Source Code
 

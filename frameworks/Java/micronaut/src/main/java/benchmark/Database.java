@@ -3,8 +3,6 @@ package benchmark;
 import benchmark.entity.Fortune;
 import benchmark.entity.World;
 import benchmark.repository.DbRepository;
-import com.github.mustachejava.DefaultMustacheFactory;
-import com.github.mustachejava.Mustache;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.QueryValue;
@@ -44,6 +42,7 @@ public class Database {
         return Flowable.merge(Arrays.asList(worlds)).toList();
     }
 
+    @View("fortunes")
     @Get(value = "/fortunes", produces = "text/html;charset=utf-8")
     public Single<ModelAndView<Map>> fortune() {
         return dbRepository.fortunes().toList().flatMap(fortunes -> {
