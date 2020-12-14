@@ -1,13 +1,7 @@
 #[global_allocator]
 static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate diesel;
-
 use std::future::Future;
-use std::io::Write;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -20,13 +14,14 @@ use actix_service::{Service, ServiceFactory};
 use bytes::BytesMut;
 use futures::future::ok;
 use serde_json::to_writer;
+use yarte::ywrite_html;
 
 mod db_pg_direct;
 mod models;
 mod utils;
 
 use crate::db_pg_direct::PgConnection;
-use crate::utils::{FortunesTemplate, Writer};
+use crate::utils::Writer;
 
 struct App {
     db: PgConnection,
@@ -63,16 +58,17 @@ impl Service for App {
                     Ok(res)
                 })
             }
-            "/fortune" => {
+            "/fortunes" => {
                 let h_srv = self.hdr_srv.clone();
                 let h_ct = self.hdr_cthtml.clone();
                 let fut = self.db.tell_fortune();
 
                 Box::pin(async move {
                     let fortunes = fut.await?;
+
                     let mut body = BytesMut::with_capacity(2048);
-                    let mut writer = Writer(&mut body);
-                    let _ = write!(writer, "{}", FortunesTemplate { fortunes });
+                    ywrite_html!(body, "{{> fortune }}");
+
                     let mut res =
                         Response::with_body(StatusCode::OK, Body::Bytes(body.freeze()));
                     let hdrs = res.headers_mut();

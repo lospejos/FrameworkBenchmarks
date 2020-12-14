@@ -11,9 +11,9 @@
   <name>jooby</name>
 
   <properties>
-    <jooby.version>2.8.8</jooby.version>
-    <!-- downgrade netty and make pg-client happy -->
-    <netty.version>4.1.34.Final</netty.version>
+    <jooby.version>2.9.3</jooby.version>
+    <netty.version>4.1.49.Final</netty.version>
+    <dsl-json.version>1.9.5</dsl-json.version>
     <postgresql.version>42.2.13</postgresql.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>1.8</maven.compiler.source>
@@ -27,12 +27,6 @@
     <dependency>
       <groupId>jakarta.ws.rs</groupId>
       <artifactId>jakarta.ws.rs-api</artifactId>
-    </dependency>
-
-    <!-- jackson -->
-    <dependency>
-      <groupId>io.jooby</groupId>
-      <artifactId>jooby-jackson</artifactId>
     </dependency>
 
     <!-- jdbc -->
@@ -60,22 +54,42 @@
       <version>${postgresql.version}</version>
     </dependency>
 
-    <!-- logging -->
     <dependency>
-      <groupId>ch.qos.logback</groupId>
-      <artifactId>logback-classic</artifactId>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-pg-client</artifactId>
+      <version>3.9.2</version>
     </dependency>
 
+    <!-- json -->
     <dependency>
-      <groupId>io.reactiverse</groupId>
-      <artifactId>reactive-pg-client</artifactId>
-      <version>0.11.4</version>
+      <groupId>com.dslplatform</groupId>
+      <artifactId>dsl-json-java8</artifactId>
+      <version>${dsl-json.version}</version>
     </dependency>
   </dependencies>
 
   <build>
     <finalName>jooby</finalName>
     <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.2.0</version>
+        <executions>
+          <execution>
+            <id>add-source</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>${project.build.outputDirectory}${file.separator}generated-sources${file.separator}annotations</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>com.fizzed</groupId>
         <artifactId>rocker-maven-plugin</artifactId>
@@ -105,6 +119,11 @@
               <groupId>io.jooby</groupId>
               <artifactId>jooby-apt</artifactId>
               <version>${jooby.version}</version>
+            </path>
+            <path>
+              <groupId>com.dslplatform</groupId>
+              <artifactId>dsl-json-java8</artifactId>
+              <version>${dsl-json.version}</version>
             </path>
           </annotationProcessorPaths>
         </configuration>
@@ -166,6 +185,12 @@
       <dependencies>
         <dependency>
           <groupId>io.netty</groupId>
+          <artifactId>netty-common</artifactId>
+          <version>${netty.version}</version>
+        </dependency>
+
+        <dependency>
+          <groupId>io.netty</groupId>
           <artifactId>netty-buffer</artifactId>
           <version>${netty.version}</version>
         </dependency>
@@ -179,6 +204,12 @@
         <dependency>
           <groupId>io.netty</groupId>
           <artifactId>netty-codec-http</artifactId>
+          <version>${netty.version}</version>
+        </dependency>
+
+        <dependency>
+          <groupId>io.netty</groupId>
+          <artifactId>netty-transport</artifactId>
           <version>${netty.version}</version>
         </dependency>
 

@@ -1,14 +1,16 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
-	"sort"
-
 	"fasthttp/src/templates"
+	"sort"
 
 	pgx "github.com/jackc/pgx/v4"
 	"github.com/valyala/fasthttp"
 )
+
+var worldsCache = &Worlds{W: make([]World, worldsCount)}
 
 const (
 	helloWorldStr = "Hello, World!"
@@ -16,6 +18,26 @@ const (
 	contentTypeJSON = "application/json"
 	contentTypeHTML = "text/html; charset=utf-8"
 )
+
+// PopulateWorldsCache populates the worlds cache for the cache test.
+func PopulateWorldsCache() {
+	rows, err := db.Query(context.Background(), worldSelectCacheSQL, len(worldsCache.W))
+	if err != nil {
+		panic(err)
+	}
+
+	i := 0
+
+	for rows.Next() {
+		w := &worldsCache.W[i]
+
+		if err := rows.Scan(&w.ID, &w.RandomNumber); err != nil {
+			panic(err)
+		}
+
+		i++
+	}
+}
 
 // JSON . Test 1: JSON serialization.
 func JSON(ctx *fasthttp.RequestCtx) {
@@ -34,7 +56,7 @@ func DB(ctx *fasthttp.RequestCtx) {
 	w := acquireWorld()
 	id := randomWorldNum()
 
-	db.QueryRow(ctx, worldSelectSQL, id).Scan(&w.ID, &w.RandomNumber) // nolint:errcheck
+	db.QueryRow(context.Background(), worldSelectSQL, id).Scan(&w.ID, &w.RandomNumber) // nolint:errcheck
 	data, _ := json.Marshal(w)
 
 	ctx.Response.Header.SetContentType(contentTypeJSON)
@@ -49,11 +71,11 @@ func Queries(ctx *fasthttp.RequestCtx) {
 	worlds := acquireWorlds()
 	worlds.W = worlds.W[:queries]
 
-	for i := range worlds.W {
+	for i := 0; i < queries; i++ {
 		w := &worlds.W[i]
 		id := randomWorldNum()
 
-		db.QueryRow(ctx, worldSelectSQL, id).Scan(&w.ID, &w.RandomNumber) // nolint:errcheck
+		db.QueryRow(context.Background(), worldSelectSQL, id).Scan(&w.ID, &w.RandomNumber) // nolint:errcheck
 	}
 
 	data, _ := json.Marshal(worlds.W)
@@ -64,12 +86,30 @@ func Queries(ctx *fasthttp.RequestCtx) {
 	releaseWorlds(worlds)
 }
 
-// FortuneQuick . Test 4: Fortunes.
-func FortuneQuick(ctx *fasthttp.RequestCtx) {
+// CachedWorlds . Test 4: Multiple cache queries.
+func CachedWorlds(ctx *fasthttp.RequestCtx) {
+	queries := queriesParam(ctx)
+	worlds := acquireWorlds()
+	worlds.W = worlds.W[:queries]
+
+	for i := 0; i < queries; i++ {
+		worlds.W[i] = worldsCache.W[randomWorldNum()-1]
+	}
+
+	data, _ := json.Marshal(worlds.W)
+
+	ctx.Response.Header.SetContentType(contentTypeJSON)
+	ctx.Response.SetBody(data)
+
+	releaseWorlds(worlds)
+}
+
+// FortunesQuick . Test 5: Fortunes.
+func FortunesQuick(ctx *fasthttp.RequestCtx) {
 	fortune := templates.AcquireFortune()
 	fortunes := templates.AcquireFortunes()
 
-	rows, _ := db.Query(ctx, fortuneSelectSQL)
+	rows, _ := db.Query(context.Background(), fortuneSelectSQL)
 	for rows.Next() {
 		rows.Scan(&fortune.ID, &fortune.Message) // nolint:errcheck
 		fortunes.F = append(fortunes.F, *fortune)
@@ -90,17 +130,17 @@ func FortuneQuick(ctx *fasthttp.RequestCtx) {
 	templates.ReleaseFortunes(fortunes)
 }
 
-// Update . Test 5: Database updates.
-func Update(ctx *fasthttp.RequestCtx) {
+// Updates . Test 6: Database updates.
+func Updates(ctx *fasthttp.RequestCtx) {
 	queries := queriesParam(ctx)
 	worlds := acquireWorlds()
 	worlds.W = worlds.W[:queries]
 
-	for i := range worlds.W {
+	for i := 0; i < queries; i++ {
 		w := &worlds.W[i]
 		id := randomWorldNum()
 
-		db.QueryRow(ctx, worldSelectSQL, id).Scan(&w.ID, &w.RandomNumber) // nolint:errcheck
+		db.QueryRow(context.Background(), worldSelectSQL, id).Scan(&w.ID, &w.RandomNumber) // nolint:errcheck
 		w.RandomNumber = int32(randomWorldNum())
 	}
 
@@ -111,12 +151,12 @@ func Update(ctx *fasthttp.RequestCtx) {
 
 	batch := &pgx.Batch{}
 
-	for i := range worlds.W {
+	for i := 0; i < queries; i++ {
 		w := &worlds.W[i]
 		batch.Queue(worldUpdateSQL, w.RandomNumber, w.ID)
 	}
 
-	db.SendBatch(ctx, batch).Close()
+	db.SendBatch(context.Background(), batch).Close()
 
 	data, _ := json.Marshal(worlds.W)
 
@@ -126,7 +166,7 @@ func Update(ctx *fasthttp.RequestCtx) {
 	releaseWorlds(worlds)
 }
 
-// Plaintext . Test 6: Plaintext.
+// Plaintext . Test 7: Plaintext.
 func Plaintext(ctx *fasthttp.RequestCtx) {
 	ctx.Response.SetBodyString(helloWorldStr)
 }

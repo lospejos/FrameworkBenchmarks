@@ -1,10 +1,11 @@
 #[global_allocator]
-static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use bytes::BytesMut;
 use futures::future::ok;
 use ntex::http::body::Body;
 use ntex::http::header::{HeaderValue, CONTENT_TYPE, SERVER};
@@ -53,7 +54,7 @@ impl Service for App {
                     Ok(res)
                 })
             }
-            "/fortune" => {
+            "/fortunes" => {
                 let h_srv = self.hdr_srv.clone();
                 let h_ct = self.hdr_cthtml.clone();
                 let fut = self.db.tell_fortune();
@@ -78,7 +79,7 @@ impl Service for App {
                     let size = 35 * worlds.len();
                     let mut res = Response::with_body(
                         StatusCode::OK,
-                        Body::Bytes(worlds.to_bytes(size)),
+                        Body::Bytes(worlds.to_bytes::<BytesMut>(size)),
                     );
                     let hdrs = res.headers_mut();
                     hdrs.insert(SERVER, h_srv);
@@ -97,7 +98,7 @@ impl Service for App {
                     let size = 35 * worlds.len();
                     let mut res = Response::with_body(
                         StatusCode::OK,
-                        Body::Bytes(worlds.to_bytes(size)),
+                        Body::Bytes(worlds.to_bytes::<BytesMut>(size)),
                     );
                     let hdrs = res.headers_mut();
                     hdrs.insert(SERVER, h_srv);

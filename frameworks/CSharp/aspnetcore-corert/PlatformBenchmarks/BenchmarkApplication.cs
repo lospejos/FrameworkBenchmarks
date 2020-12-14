@@ -2,10 +2,11 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Buffers.Binary;
 using System.Buffers.Text;
 using System.IO.Pipelines;
+using System.Text.Json;
 using System.Threading.Tasks;
+
 using Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http;
 
 namespace PlatformBenchmarks
@@ -18,6 +19,7 @@ namespace PlatformBenchmarks
         private readonly static AsciiString _crlf = "\r\n";
         private readonly static AsciiString _eoh = "\r\n\r\n"; // End Of Headers
         private readonly static AsciiString _http11OK = "HTTP/1.1 200 OK\r\n";
+        private readonly static AsciiString _http11NotFound = "HTTP/1.1 404 Not Found\r\n";
         private readonly static AsciiString _headerServer = "Server: K";
         private readonly static AsciiString _headerContentLength = "Content-Length: ";
         private readonly static AsciiString _headerContentLengthZero = "Content-Length: 0";
@@ -33,6 +35,8 @@ namespace PlatformBenchmarks
 
         private readonly static AsciiString _plainTextBody = "Hello, World!";
 
+        private static readonly JsonSerializerOptions SerializerOptions = new JsonSerializerOptions();
+
         private readonly static AsciiString _fortunesTableStart = "<!DOCTYPE html><html><head><title>Fortunes</title></head><body><table><tr><th>id</th><th>message</th></tr>";
         private readonly static AsciiString _fortunesRowStart = "<tr><td>";
         private readonly static AsciiString _fortunesColumn = "</td><td>";
@@ -44,73 +48,72 @@ namespace PlatformBenchmarks
         public static RawDb Db { get; set; }
 #endif
 
+        [ThreadStatic]
+        private static Utf8JsonWriter t_writer;
+
         public static class Paths
         {
+            public readonly static AsciiString Json = "/json";
+            public readonly static AsciiString Plaintext = "/plaintext";
             public readonly static AsciiString SingleQuery = "/db";
-            public readonly static AsciiString Json = "/j";
             public readonly static AsciiString Fortunes = "/fortunes";
-            public readonly static AsciiString Plaintext = "/p";
-            public readonly static AsciiString Updates = "/updates/queries=";
-            public readonly static AsciiString MultipleQueries = "/queries/queries=";
-            public const ushort JsonPath = 0x6a2f;
-            public const ushort PlaintextPath = 0x702f;
+            public readonly static AsciiString Updates = "/updates/";
+            public readonly static AsciiString MultipleQueries = "/queries/";
+            public readonly static AsciiString Caching = "/cached-worlds/";
         }
 
         private RequestType _requestType;
-#if DATABASE
         private int _queries;
-#endif
+
+#if NET5_0
+        public void OnStartLine(HttpVersionAndMethod versionAndMethod, TargetOffsetPathLength targetPath, Span<byte> startLine)
+        {
+            _requestType = versionAndMethod.Method == HttpMethod.Get ? GetRequestType(startLine.Slice(targetPath.Offset, targetPath.Length), ref _queries) : RequestType.NotRecognized;
+        }
+#else
         public void OnStartLine(HttpMethod method, HttpVersion version, Span<byte> target, Span<byte> path, Span<byte> query, Span<byte> customMethod, bool pathEncoded)
         {
+            _requestType = method == HttpMethod.Get ? GetRequestType(path, ref _queries) : RequestType.NotRecognized;
+        }
+#endif
 
+        private RequestType GetRequestType(ReadOnlySpan<byte> path, ref int queries)
+        {
 #if !DATABASE
-            if (method == HttpMethod.Get && BinaryPrimitives.TryReadUInt16LittleEndian(path, out var value))
+            if (path.Length == 10 && path.SequenceEqual(Paths.Plaintext))
             {
-                if (value == Paths.PlaintextPath)
-                {
-                    _requestType = RequestType.PlainText;
-                    return;
-                }
-                else if (value == Paths.JsonPath)
-                {
-                    _requestType = RequestType.Json;
-                    return;
-                }
+                return RequestType.PlainText;
             }
-
-            _requestType = RequestType.NotRecognized;
+            else if (path.Length == 5 && path.SequenceEqual(Paths.Json))
+            {
+                return RequestType.Json;
+            }
 #else
-            if (method == HttpMethod.Get)
+            if (path.Length == 3 && path[0] == '/' && path[1] == 'd' && path[2] == 'b')
             {
-                var pathLength = path.Length;
-                if (Paths.SingleQuery.Length <= pathLength && path.StartsWith(Paths.SingleQuery))
-                {
-                    _requestType = RequestType.SingleQuery;
-                }
-                else if (Paths.Fortunes.Length <= pathLength && path.StartsWith(Paths.Fortunes))
-                {
-                    _requestType = RequestType.Fortunes;
-                }
-                else if (Paths.Updates.Length <= pathLength && path.StartsWith(Paths.Updates))
-                {
-                    _queries = ParseQueries(path, Paths.Updates.Length);
-                    _requestType = RequestType.Updates;
-                }
-                else if (Paths.MultipleQueries.Length <= pathLength && path.StartsWith(Paths.MultipleQueries))
-                {
-                    _queries = ParseQueries(path, Paths.MultipleQueries.Length);
-                    _requestType = RequestType.MultipleQueries;
-                }
-                else
-                {
-                    _requestType = RequestType.NotRecognized;
-                }
+                return RequestType.SingleQuery;
             }
-            else
+            else if (path.Length == 9 && path[1] == 'f' && path.SequenceEqual(Paths.Fortunes))
             {
-                _requestType = RequestType.NotRecognized;
+                return RequestType.Fortunes;
             }
-#endif 
+            else if (path.Length >= 15 && path[1] == 'c' && path.StartsWith(Paths.Caching))
+            {
+                queries = ParseQueries(path.Slice(15));
+                return RequestType.Caching;
+            }
+            else if (path.Length >= 9 && path[1] == 'u' && path.StartsWith(Paths.Updates))
+            {
+                queries = ParseQueries(path.Slice(9));
+                return RequestType.Updates;
+            }
+            else if (path.Length >= 9 && path[1] == 'q' && path.StartsWith(Paths.MultipleQueries))
+            {
+                queries = ParseQueries(path.Slice(9));
+                return RequestType.MultipleQueries;
+            }
+#endif
+            return RequestType.NotRecognized;
         }
 
 
@@ -123,7 +126,7 @@ namespace PlatformBenchmarks
             }
             else if (_requestType == RequestType.Json)
             {
-                Json(ref writer);
+                Json(ref writer, Writer);
             }
             else
             {
@@ -131,9 +134,10 @@ namespace PlatformBenchmarks
             }
         }
 #else
-        private static int ParseQueries(Span<byte> path, int pathLength)
+
+        private static int ParseQueries(ReadOnlySpan<byte> parameter)
         {
-            if (!Utf8Parser.TryParse(path.Slice(pathLength), out int queries, out _) || queries < 1)
+            if (!Utf8Parser.TryParse(parameter, out int queries, out _) || queries < 1)
             {
                 queries = 1;
             }
@@ -145,44 +149,26 @@ namespace PlatformBenchmarks
             return queries;
         }
 
-        private Task ProcessRequestAsync()
+        private Task ProcessRequestAsync() => _requestType switch
         {
-            Task task;
-            var requestType = _requestType;
-            if (requestType == RequestType.Fortunes)
-            {
-                task = Fortunes(Writer);
-            }
-            else if (requestType == RequestType.SingleQuery)
-            {
-                task = SingleQuery(Writer);
-            }
-            else if (requestType == RequestType.Updates)
-            {
-                task = Updates(Writer, _queries);
-            }
-            else if (requestType == RequestType.MultipleQueries)
-            {
-                task = MultipleQueries(Writer, _queries);
-            }
-            else
-            {
-                Default(Writer);
-                task = Task.CompletedTask;
-            }
+            RequestType.Fortunes => Fortunes(Writer),
+            RequestType.SingleQuery => SingleQuery(Writer),
+            RequestType.Caching => Caching(Writer, _queries),
+            RequestType.Updates => Updates(Writer, _queries),
+            RequestType.MultipleQueries => MultipleQueries(Writer, _queries),
+            _ => Default(Writer)
+        };
 
-            return task;
-        }
-
-        private static void Default(PipeWriter pipeWriter)
+        private static Task Default(PipeWriter pipeWriter)
         {
-            var writer = GetWriter(pipeWriter);
+            var writer = GetWriter(pipeWriter, sizeHint: _defaultPreamble.Length + DateHeader.HeaderBytes.Length);
             Default(ref writer);
             writer.Commit();
+            return Task.CompletedTask;
         }
 #endif
         private readonly static AsciiString _defaultPreamble =
-            _http11OK +
+            _http11NotFound +
             _headerServer + _crlf +
             _headerContentTypeText + _crlf +
             _headerContentLengthZero;
@@ -202,6 +188,7 @@ namespace PlatformBenchmarks
             Json,
             Fortunes,
             SingleQuery,
+            Caching,
             Updates,
             MultipleQueries
         }

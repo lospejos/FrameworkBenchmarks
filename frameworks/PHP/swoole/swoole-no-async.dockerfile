@@ -1,9 +1,9 @@
-FROM php:7.3
+FROM php:8.0-cli
 
 RUN pecl install swoole > /dev/null && \
     docker-php-ext-enable swoole
 
-RUN docker-php-ext-install pdo_mysql > /dev/null
+RUN docker-php-ext-install opcache pdo_mysql > /dev/null
 
 ADD ./ /swoole
 WORKDIR /swoole

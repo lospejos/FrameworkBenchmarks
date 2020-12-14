@@ -2,8 +2,8 @@
   "framework": "aspcore-corert",
   "tests": [{
     "default": {
-      "plaintext_url": "/p",
-      "json_url": "/j",
+      "plaintext_url": "/plaintext",
+      "json_url": "/json",
       "port": 8080,
       "approach": "Stripped",
       "classification": "Platform",
@@ -17,25 +17,6 @@
       "os": "Linux",
       "database_os": "Linux",
       "display_name": "ASP.NET Core",
-      "notes": "",
-      "versus": "aspcore"
-    },
-    "rhtx": {
-      "plaintext_url": "/p",
-      "json_url": "/j",
-      "port": 8080,
-      "approach": "Stripped",
-      "classification": "Platform",
-      "database": "None",
-      "framework": "ASP.NET Core",
-      "language": "C#",
-      "orm": "Raw",
-      "platform": ".NET",
-      "flavor": "CoreRT",
-      "webserver": "Kestrel",
-      "os": "Linux",
-      "database_os": "Linux",
-      "display_name": "ASP.NET Core, Red Hat Linux Transport",
       "notes": "",
       "versus": "aspcore"
     }

@@ -43,6 +43,8 @@ namespace PlatformBenchmarks
 
         private static readonly AsciiString _result_plaintext = "Hello, World!";
 
+        private static readonly AsciiString _cached_worlds = "/cached-worlds";
+
         private static byte _Space = 32;
 
         private static byte _question = 63;
@@ -69,7 +71,6 @@ namespace PlatformBenchmarks
             e.Session.Socket.NoDelay = true;
             var token = new HttpToken();
             token.Db = new RawDb(new ConcurrentRandom(), Npgsql.NpgsqlFactory.Instance);
-            token.NextQueue = NextQueueGroup.Next();
             e.Session.Tag = token;
         }
 
@@ -83,29 +84,6 @@ namespace PlatformBenchmarks
             return -1;
 
         }
-
-        class RequestWork : IEventWork
-        {
-            public void Dispose()
-            {
-
-            }
-
-            public PipeStream Stream { get; set; }
-
-            public ISession Session { get; set; }
-
-            public HttpToken Token { get; set; }
-
-            public HttpHandler Handler { get; set; }
-
-            public Task Execute()
-            {
-                Handler.OnProcess(Stream, Token, Session);
-                return Task.CompletedTask;
-            }
-        }
-
         private void OnProcess(PipeStream pipeStream, HttpToken token, ISession sessino)
         {
             var line = _line.AsSpan();
@@ -146,37 +124,16 @@ namespace PlatformBenchmarks
 
         public override void SessionReceive(IServer server, SessionReceiveEventArgs e)
         {
-
             base.SessionReceive(server, e);
             PipeStream pipeStream = e.Session.Stream.ToPipeStream();
             HttpToken token = (HttpToken)e.Session.Tag;
-            if (Program.Debug)
-            {
-                RequestWork work = new RequestWork();
-                work.Handler = this;
-                work.Session = e.Session;
-                work.Stream = pipeStream;
-                work.Token = token;
-                token.NextQueue.Enqueue(work);
-            }
-            else
-            {
-                OnProcess(pipeStream, token, e.Session);
-            }
+            OnProcess(pipeStream, token, e.Session);
         }
 
 
 
         public virtual void OnStartLine(ReadOnlySpan<byte> http, ReadOnlySpan<byte> method, ReadOnlySpan<byte> url, ISession session, HttpToken token, PipeStream stream)
         {
-            if (!Program.Debug)
-            {
-                UpdateCommandsCached.Init();
-                if (Program.UpDB)
-                    DBConnectionGroupPool.Init(32, RawDb._connectionString);
-                else
-                    DBConnectionGroupPool.Init(256, RawDb._connectionString);
-            }
             int queryIndex = AnalysisUrl(url);
             ReadOnlySpan<byte> baseUrl = default;
             ReadOnlySpan<byte> queryString = default;
@@ -214,6 +171,14 @@ namespace PlatformBenchmarks
                 OnWriteContentLength(stream, token);
                 queries(Encoding.ASCII.GetString(queryString), stream, token, session);
             }
+
+            else if (baseUrl.Length == _cached_worlds.Length && baseUrl.StartsWith(_cached_worlds))
+            {
+                stream.Write(_headerContentTypeJson.Data, 0, _headerContentTypeJson.Length);
+                OnWriteContentLength(stream, token);
+                caching(Encoding.ASCII.GetString(queryString), stream, token, session);
+            }
+
             else if (baseUrl.Length == _path_Updates.Length && baseUrl.StartsWith(_path_Updates))
             {
                 stream.Write(_headerContentTypeJson.Data, 0, _headerContentTypeJson.Length);

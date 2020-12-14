@@ -20,13 +20,13 @@
       "versus": ""
     },
     "db": {
-      "fortune_url": "/fortune",
+      "fortune_url": "/fortunes",
       "db_url": "/db",
       "query_url": "/query?q=",
       "update_url": "/update?q=",
       "port": 8080,
       "approach": "Realistic",
-      "classification": "Platform",
+      "classification": "Micro",
       "database": "Postgres",
       "framework": "ntex",
       "language": "Rust",

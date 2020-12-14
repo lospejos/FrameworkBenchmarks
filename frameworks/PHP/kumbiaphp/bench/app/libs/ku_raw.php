@@ -18,7 +18,7 @@ class KuRaw
             'benchmarkdbuser',
             'benchmarkdbpass',
             [
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_DEFAULT_FETCH_MODE  => PDO::FETCH_ASSOC,
                 PDO::ATTR_ERRMODE             => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_EMULATE_PREPARES    => false
             ]
@@ -26,7 +26,7 @@ class KuRaw
 
         self::$db        = $pdo->prepare('SELECT id,randomNumber FROM World WHERE id = ?');
         self::$fortune   = $pdo->prepare('SELECT id,message FROM Fortune');
-        self::$random    = $pdo->prepare('SELECT randomNumber FROM World WHERE id = ?');
+        self::$random    = $pdo->prepare('SELECT id,randomNumber FROM World WHERE id = ?');
         self::$instance  = $pdo;
     }
 
